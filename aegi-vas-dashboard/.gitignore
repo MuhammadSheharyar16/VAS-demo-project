@@ -1,0 +1,9 @@
+node_modules/
+bin/
+obj/
+TestResults/
+publish/
+backend/src/Aegi.Vas.Dashboard.Api/wwwroot/
+appsettings.*.local.json
+*.user
+.vs/

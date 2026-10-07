@@ -1,0 +1,232 @@
+<title>VAS Dashboard Architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column (max 1100px): diagram, request flow, folder trees side by side, security + stack. Single dark theme matching the dashboard demo. */
+:root{
+  --bg:#0a1424; --bg2:#0f1c33; --panel:#13233f; --line:#22365a;
+  --fg:#e8edf6; --muted:#8fa0bd; --gold:#d6b25e; --gold2:#f1d891;
+  --blue:#6aa8e4; --green:#4fc79a; --violet:#a98be8;
+  --display:"DM Serif Display",Georgia,serif; --body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--body);font-size:15px;line-height:1.6;background:radial-gradient(1000px 500px at 90% -10%,#1b2f55,transparent 60%),var(--bg)}
+.wrap{max-width:1100px;margin:0 auto;padding-inline:20px;padding-block:36px 48px;display:grid;gap:28px}
+.eyebrow{color:var(--gold);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(30px,5vw,44px);line-height:1.1;margin:6px 0 10px;text-wrap:balance}
+h2{font-family:var(--display);font-weight:400;font-size:26px;margin:0 0 4px}
+.lede{color:var(--muted);max-width:68ch;margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12.5px;color:var(--muted);background:var(--bg2)}
+.chip b{color:var(--gold2);font-weight:600}
+.panel{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:16px;padding:22px;min-width:0}
+.sub{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+.diag{overflow-x:auto}
+.diag svg{display:block;min-width:900px;width:100%;height:auto}
+svg text{font-family:var(--body)}
+.flow{list-style:none;margin:0;padding:0;display:grid;gap:10px;counter-reset:s}
+.flow li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.015)}
+.flow li::before{content:counter(s);width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--gold);color:#1a1406;font-weight:700;font-size:13px}
+.flow b{font-weight:600}
+.flow span{color:var(--muted);display:block;font-size:13.5px}
+code{font-family:var(--mono);font-size:.88em;color:var(--gold2);background:rgba(214,178,94,.08);padding:1px 5px;border-radius:4px}
+.trees{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.tree{font-family:var(--mono);font-size:12.8px;line-height:1.75;white-space:pre;overflow-x:auto;margin:0;color:var(--fg)}
+.tree .d{color:var(--gold2)} .tree .c{color:#6b7a95}
+.tag{display:inline-block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;padding:2px 8px;border-radius:6px;margin-bottom:8px}
+.tb{background:rgba(106,168,228,.14);color:var(--blue)} .tf{background:rgba(169,139,232,.15);color:var(--violet)} .tr{background:rgba(214,178,94,.14);color:var(--gold2)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.sec{display:grid;gap:10px}
+.sec div{padding:10px 12px;border-left:3px solid var(--green);background:rgba(79,199,154,.05);border-radius:0 10px 10px 0}
+.sec b{display:block;font-weight:600}
+.sec span{color:var(--muted);font-size:13.5px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+td,th{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--muted);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+td:first-child{font-weight:600;white-space:nowrap}
+.scroll{overflow-x:auto}
+.note{color:var(--muted);font-size:13px;border:1px dashed #3a4f78;border-radius:12px;padding:12px 14px}
+.dash{stroke-dasharray:6 8;animation:flow 1.2s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-14}}
+@media (prefers-reduced-motion:reduce){.dash{animation:none}}
+</style>
+
+<div class="wrap">
+  <section>
+    <div class="eyebrow">AEGI · VAS Executive Dashboard · built to Roadmap v1.0</div>
+    <h1>How data gets from Fabric to the dashboard</h1>
+    <p class="lede">The executive signs in with Microsoft Entra ID and calls our own API. One Azure App Service hosts the React site and the ASP.NET Core API. The API reads approved KPI outputs from the Fabric gold layer with its own service principal. The browser never holds a Fabric credential.</p>
+    <div class="chips"><span class="chip"><b>Data</b> Fabric Lakehouse gold · SQL analytics endpoint</span><span class="chip"><b>API</b> ASP.NET Core 10</span><span class="chip"><b>Site</b> React + MSAL React</span><span class="chip"><b>Hosting</b> one Azure App Service</span><span class="chip"><b>Secrets</b> Key Vault via managed identity</span></div>
+  </section>
+
+  <section class="panel">
+    <h2>End-to-end architecture</h2>
+    <p class="sub">The numbers follow the roadmap figure. Gold lines carry requests and results, blue dashed lines carry identity and credentials, and violet carries telemetry.</p>
+    <div class="diag">
+    <svg viewBox="0 0 1060 520" role="img" aria-label="Architecture: browser, Entra ID, App Service with React and ASP.NET Core API, Key Vault, Application Insights, Fabric SQL endpoint and Lakehouse gold">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#d6b25e"/></marker>
+        <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#6aa8e4"/></marker>
+        <marker id="av" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#a98be8"/></marker>
+      </defs>
+      <g font-size="11" font-weight="700" letter-spacing="1.5">
+        <rect x="10" y="20" width="220" height="300" rx="16" fill="#0f1c33" stroke="#22365a"/><text x="28" y="44" fill="#d6b25e">USERS AND DEVICES</text>
+        <rect x="260" y="20" width="470" height="300" rx="16" fill="#0f1c33" stroke="#22365a"/><text x="278" y="44" fill="#6aa8e4">AEGI AZURE ENVIRONMENT</text>
+        <rect x="760" y="20" width="290" height="300" rx="16" fill="#0f1c33" stroke="#22365a"/><text x="778" y="44" fill="#4fc79a">MICROSOFT FABRIC</text>
+        <rect x="10" y="350" width="1040" height="160" rx="16" fill="#0f1c33" stroke="#22365a"/><text x="28" y="374" fill="#a98be8">IDENTITY, SECRETS AND OPERATIONS</text>
+      </g>
+      <g font-size="13">
+        <rect x="30" y="64" width="180" height="120" rx="10" fill="#13233f" stroke="#d6b25e"/><text x="44" y="88" fill="#e8edf6" font-weight="600">Executive browser</text><text x="44" y="108" fill="#8fa0bd" font-size="12">React dashboard</text><text x="44" y="126" fill="#8fa0bd" font-size="12">Executive Summary + VAS</text><text x="44" y="144" fill="#8fa0bd" font-size="12">MSAL React · PKCE</text><text x="44" y="168" fill="#d6b25e" font-size="12">no Fabric credential</text>
+
+        <rect x="280" y="64" width="430" height="236" rx="12" fill="#13233f" stroke="#6aa8e4"/><text x="296" y="88" fill="#e8edf6" font-weight="600">Azure App Service (one origin)</text>
+        <rect x="296" y="104" width="398" height="40" rx="8" fill="#0f1c33" stroke="#2f4a74"/><text x="310" y="129" fill="#e8edf6" font-size="12.5">React assets (wwwroot)  ·  /api/client-config</text>
+        <rect x="296" y="154" width="398" height="130" rx="8" fill="#0f1c33" stroke="#2f4a74"/><text x="310" y="176" fill="#e8edf6" font-weight="600" font-size="12.5">ASP.NET Core API  /api/v1/*</text>
+        <text x="310" y="198" fill="#8fa0bd" font-size="12">Validate token: signature · issuer · audience · expiry</text>
+        <text x="310" y="216" fill="#8fa0bd" font-size="12">Require scope Dashboard.Read + role Dashboard.Viewer</text>
+        <text x="310" y="234" fill="#8fa0bd" font-size="12">Validate filters (dates, country, centre)</text>
+        <text x="310" y="252" fill="#8fa0bd" font-size="12">KpiService: the only place KPI formulas live</text>
+        <text x="310" y="270" fill="#8fa0bd" font-size="12">Read-only parameterised SQL · pooled connections</text>
+
+        <rect x="780" y="64" width="250" height="88" rx="10" fill="#13233f" stroke="#2f4a74"/><text x="794" y="88" fill="#e8edf6" font-weight="600">SQL analytics endpoint</text><text x="794" y="108" fill="#8fa0bd" font-size="12">Read-only reporting</text><text x="794" y="126" fill="#8fa0bd" font-size="12">Approved KPI views only</text><text x="794" y="144" fill="#4fc79a" font-size="12">gold.vw_vas_* (to confirm)</text>
+        <rect x="780" y="168" width="250" height="56" rx="10" fill="#13233f" stroke="#4fc79a"/><text x="794" y="192" fill="#e8edf6" font-weight="600">Lakehouse · Gold</text><text x="794" y="211" fill="#8fa0bd" font-size="12">VAS reporting data</text>
+        <rect x="780" y="240" width="250" height="56" rx="10" fill="#13233f" stroke="#2f4a74"/><text x="794" y="264" fill="#e8edf6" font-weight="600">Existing VAS ingestion</text><text x="794" y="283" fill="#8fa0bd" font-size="12">Scheduled gold refresh</text>
+        <path d="M905 166V154M905 238V226" stroke="#4fc79a" stroke-width="2" marker-end="url(#ar)"/>
+
+        <rect x="30" y="390" width="300" height="100" rx="10" fill="#13233f" stroke="#2f4a74"/><text x="46" y="414" fill="#e8edf6" font-weight="600">Microsoft Entra ID</text><text x="46" y="434" fill="#8fa0bd" font-size="12">Executive SSO · SPA + API registrations</text><text x="46" y="452" fill="#8fa0bd" font-size="12">App role assignment for executives</text><text x="46" y="470" fill="#8fa0bd" font-size="12">Separate Fabric service principal</text>
+        <rect x="360" y="390" width="300" height="100" rx="10" fill="#13233f" stroke="#2f4a74"/><text x="376" y="414" fill="#e8edf6" font-weight="600">Azure Key Vault</text><text x="376" y="434" fill="#8fa0bd" font-size="12">Fabric workload credential</text><text x="376" y="452" fill="#8fa0bd" font-size="12">Secret: Fabric--ClientSecret</text><text x="376" y="470" fill="#8fa0bd" font-size="12">Read by App Service managed identity</text>
+        <rect x="690" y="390" width="340" height="100" rx="10" fill="#13233f" stroke="#2f4a74"/><text x="706" y="414" fill="#e8edf6" font-weight="600">Application Insights</text><text x="706" y="434" fill="#8fa0bd" font-size="12">Health · errors · latency</text><text x="706" y="452" fill="#8fa0bd" font-size="12">SQL dependency timing per KPI query</text><text x="706" y="470" fill="#8fa0bd" font-size="12">Correlation ID on every request</text>
+      </g>
+      <g font-size="11" fill="#e8edf6" font-weight="700">
+        <path d="M120 186V388" stroke="#6aa8e4" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#ab)" marker-start="url(#ab)"/>
+        <circle cx="120" cy="290" r="11" fill="#6aa8e4"/><text x="120" y="294" text-anchor="middle" fill="#0a1424">1</text><text x="138" y="294" fill="#8fa0bd" font-weight="400">Sign-in · API access token</text>
+        <path class="dash" d="M212 110H278" stroke="#d6b25e" stroke-width="2.4" fill="none" marker-end="url(#ar)"/>
+        <circle cx="245" cy="96" r="11" fill="#d6b25e"/><text x="245" y="100" text-anchor="middle" fill="#0a1424">2</text>
+        <path class="dash" d="M278 160H212" stroke="#d6b25e" stroke-width="2.4" fill="none" marker-end="url(#ar)"/>
+        <circle cx="245" cy="174" r="11" fill="#d6b25e"/><text x="245" y="178" text-anchor="middle" fill="#0a1424">6</text>
+        <path d="M510 388V302" stroke="#6aa8e4" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#ab)"/>
+        <circle cx="510" cy="345" r="11" fill="#6aa8e4"/><text x="510" y="349" text-anchor="middle" fill="#0a1424">3</text><text x="528" y="349" fill="#8fa0bd" font-weight="400">Read credential</text>
+        <path d="M330 440Q240 330 330 302" stroke="#6aa8e4" stroke-width="2" stroke-dasharray="5 5" fill="none" marker-end="url(#ab)"/>
+        <circle cx="282" cy="338" r="11" fill="#6aa8e4"/><text x="282" y="342" text-anchor="middle" fill="#0a1424">4</text>
+        <path class="dash" d="M712 136H778" stroke="#d6b25e" stroke-width="2.4" fill="none" marker-end="url(#ar)"/>
+        <circle cx="745" cy="152" r="11" fill="#d6b25e"/><text x="745" y="156" text-anchor="middle" fill="#0a1424">5</text>
+        <path class="dash" d="M778 100H712" stroke="#d6b25e" stroke-width="2.4" fill="none" marker-end="url(#ar)"/>
+        <text x="722" y="92" fill="#8fa0bd" font-weight="400">results</text>
+        <path d="M660 302Q700 350 760 388" stroke="#a98be8" stroke-width="2" fill="none" marker-end="url(#av)"/>
+      </g>
+    </svg>
+    </div>
+    <p class="sub" style="margin:12px 0 0">1 Sign-in and API token · 2 HTTPS call with the user token · 3 Managed identity reads the Fabric credential · 4 Workload token for the service principal · 5 SQL/TDS read-only query · 6 JSON results with currency and freshness</p>
+  </section>
+
+  <section class="panel">
+    <h2>Executive journey, as built</h2>
+    <p class="sub">Steps from roadmap section 03 and where each one lives in the code.</p>
+    <ol class="flow">
+      <li><div><b>Open the dashboard.</b><span>App Service serves the React build from <code>wwwroot</code>. The site first loads <code>/api/client-config</code>, which holds only the public tenant ID, client ID and scope, so one build works in Dev, UAT and Production.</span></div></li>
+      <li><div><b>Sign in with Microsoft Entra ID.</b><span>MSAL React uses the authorization code flow with PKCE. Tenant policies such as MFA and Conditional Access apply. <code>frontend/src/auth/</code></span></div></li>
+      <li><div><b>Acquire an API access token.</b><span>The token is requested for <code>api://…/Dashboard.Read</code> and is sent only to this API. The browser has no secret and no Fabric credential.</span></div></li>
+      <li><div><b>Request dashboard data.</b><span><code>GET /api/v1/vas/revenue?from=2026-01&amp;to=2026-09&amp;country=UAE</code> over HTTPS with the bearer token.</span></div></li>
+      <li><div><b>Validate and authorise.</b><span>The API checks signature, issuer, audience and expiry, then requires the <code>Dashboard.Read</code> scope and the <code>Dashboard.Viewer</code> role. Filters are checked for format and against known countries and centres. A filter only narrows results; it never grants access. <code>Security/</code>, <code>Reporting/ReportFilter.cs</code></span></div></li>
+      <li><div><b>Authenticate the backend to Fabric.</b><span>Microsoft.Data.SqlClient signs in as the separate Fabric service principal, whose secret is loaded from Key Vault by the managed identity. The executive's token is never reused.</span></div></li>
+      <li><div><b>Query approved reporting outputs.</b><span>The API runs one parameterised, read-only query per KPI, embedded in the build. Connections are pooled, and the driver renews tokens. <code>Reporting/Sql/</code></span></div></li>
+      <li><div><b>Return dashboard-ready results.</b><span>The response is <code>{ data, meta }</code>: KPI values and breakdowns, currency, time zone, last gold refresh, applied filters and a correlation ID. All formulas run in <code>KpiService</code>, so React does no KPI maths.</span></div></li>
+      <li><div><b>Render the premium experience.</b><span>The site shows animated cards, charts and a 3D revenue view, with loading, empty, error and "out of date" states. Changing a filter repeats the request.</span></div></li>
+      <li><div><b>Refresh source data independently.</b><span>The existing VAS ingestion refreshes the gold layer on its own schedule. Reloading the page never triggers ingestion.</span></div></li>
+    </ol>
+  </section>
+
+  <section class="panel">
+    <h2>Folder structure</h2>
+    <p class="sub">One repository. The React build is published into the API so both deploy to one App Service.</p>
+    <div class="trees">
+<div><span class="tag tr">Repository root</span><pre class="tree"><span class="d">aegi-vas-dashboard/</span>
+├── <span class="d">backend/</span>            <span class="c"># ASP.NET Core API</span>
+├── <span class="d">frontend/</span>           <span class="c"># React + Vite</span>
+├── <span class="d">docs/</span>
+│   ├── architecture.html
+│   ├── gap-register.md
+│   └── <span class="d">screenshots/</span>
+├── <span class="d">.github/workflows/</span>
+│   └── ci.yml          <span class="c"># build, test, publish</span>
+└── README.md</pre></div>
+<div><span class="tag tb">backend/</span><pre class="tree"><span class="d">backend/</span>
+├── Aegi.Vas.Dashboard.sln
+├── <span class="d">src/Aegi.Vas.Dashboard.Api/</span>
+│   ├── Program.cs
+│   ├── appsettings.json
+│   ├── appsettings.Development.json
+│   ├── appsettings.UAT.json
+│   ├── appsettings.Production.json
+│   ├── <span class="d">Configuration/</span>    <span class="c"># typed options</span>
+│   ├── <span class="d">Security/</span>         <span class="c"># JWT + access policy</span>
+│   ├── <span class="d">Middleware/</span>       <span class="c"># correlation ID, headers</span>
+│   ├── <span class="d">Endpoints/</span>        <span class="c"># /api/v1/*</span>
+│   ├── <span class="d">Contracts/</span>        <span class="c"># response schemas</span>
+│   ├── <span class="d">Reporting/</span>
+│   │   ├── FabricSqlDataSource.cs
+│   │   ├── SampleDataSource.cs  <span class="c"># dev only</span>
+│   │   ├── ReportFilter.cs
+│   │   └── <span class="d">Sql/</span>          <span class="c"># 1 .sql per KPI</span>
+│   ├── <span class="d">Services/</span>
+│   │   └── KpiService.cs <span class="c"># all formulas</span>
+│   ├── <span class="d">Health/</span>
+│   └── <span class="d">wwwroot/</span>          <span class="c"># React build</span>
+└── <span class="d">tests/</span>              <span class="c"># 38 xUnit tests</span></pre></div>
+<div><span class="tag tf">frontend/</span><pre class="tree"><span class="d">frontend/</span>
+├── <span class="d">src/</span>
+│   ├── main.jsx
+│   ├── App.jsx
+│   ├── <span class="d">auth/</span>             <span class="c"># MSAL React</span>
+│   ├── <span class="d">api/</span>              <span class="c"># token + errors</span>
+│   ├── <span class="d">hooks/</span>            <span class="c"># useKpi</span>
+│   ├── <span class="d">pages/</span>
+│   │   ├── ExecutiveSummary.jsx
+│   │   ├── Vas.jsx
+│   │   └── ComingSoon.jsx
+│   ├── <span class="d">components/</span>
+│   │   ├── <span class="d">kpi/</span>
+│   │   ├── <span class="d">charts/</span>
+│   │   ├── <span class="d">three/</span>        <span class="c"># 3D revenue</span>
+│   │   ├── <span class="d">layout/</span>       <span class="c"># header, filters, tabs</span>
+│   │   └── <span class="d">common/</span>       <span class="c"># states</span>
+│   ├── <span class="d">theme/</span>
+│   └── <span class="d">utils/</span>            <span class="c"># formatting only</span>
+├── index.html
+├── vite.config.js      <span class="c"># builds into API wwwroot</span>
+└── package.json</pre></div>
+    </div>
+  </section>
+
+  <section class="cols">
+    <div class="panel">
+      <h2>Security built in</h2>
+      <p class="sub">Mapped to the roadmap's validation phase.</p>
+      <div class="sec">
+        <div><b>Two separate identities</b><span>The executive token authorises calls to our API. The service principal authorises the Fabric SQL connection. They are never swapped.</span></div>
+        <div><b>Rejected callers are tested</b><span>Tests cover a missing token, garbage, expired, wrong audience, wrong issuer, wrong signing key, missing or wrong scope, and a missing role.</span></div>
+        <div><b>Least privilege on Fabric</b><span>The API uses a read-only connection intent and SELECT on the reporting views only. Queries ship inside the assembly.</span></div>
+        <div><b>Safe failures</b><span>Errors are ProblemDetails with a correlation ID and no stack traces. A Fabric outage returns 503 and fails the readiness check.</span></div>
+        <div><b>Hardened origin</b><span>HTTPS with HSTS, a strict CSP that allows only this site and Entra, no-store on API responses, and per-user rate limiting.</span></div>
+        <div><b>Development shortcuts are locked</b><span>Sample data and the sign-in bypass refuse to start outside Development.</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Acceptance milestones</h2>
+      <p class="sub">Roadmap section 07 and what this build already shows.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>Milestone</th><th>Status in this build</th></tr></thead>
+        <tbody>
+          <tr><td>M1 Access path</td><td>Ready to prove: tests show unauthorised callers are rejected. Needs real Entra registrations.</td></tr>
+          <tr><td>M2 Fabric proved</td><td>Fabric adapter is written. Needs the real endpoint, views and service principal.</td></tr>
+          <tr><td>M3 Vertical slice</td><td>Works end to end on sample data.</td></tr>
+          <tr><td>M4 Phase 1 complete</td><td>Both tabs, placeholders and CSAT treatment are built. Awaiting design sign-off.</td></tr>
+          <tr><td>M5 Reporting accepted</td><td>Needs KPI reconciliation with data-owner samples (UAT).</td></tr>
+          <tr><td>M6 Production</td><td>Health checks, telemetry hooks and CI sample are in place. Monitoring and support ownership are still to be agreed.</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <p class="note">Assumptions stay explicit until the owners named in the roadmap validate them: App Service hosting, Lakehouse SQL access, KPI formulas in gold views, and one shared reporting scope for all executives. See <code>docs/gap-register.md</code> for the full list.</p>
+</div>

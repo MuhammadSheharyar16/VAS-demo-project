@@ -1,0 +1,42 @@
+# Sample pipeline. The roadmap says to use AEGI's existing CI/CD platform; port these steps if that is Azure DevOps.
+name: build-and-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build React into the API's wwwroot
+        working-directory: frontend
+        run: npm ci && npm run build
+
+      - name: Test API
+        working-directory: backend
+        run: dotnet test --configuration Release
+
+      - name: Publish App Service package
+        working-directory: backend
+        run: dotnet publish src/Aegi.Vas.Dashboard.Api -c Release -o ../publish
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-service-package
+          path: publish
+
+  # Deployment to Dev/UAT/Production goes here, gated by environment approvals (roadmap phases 3, 7, 8).

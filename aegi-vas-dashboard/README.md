@@ -153,7 +153,15 @@ B1 has no deployment slots, so use Standard or Premium if UAT must test slot swa
 4. **Fabric access.** A tenant admin enables *Service principals can use Fabric APIs*. Add the Web App's managed identity
    to the workspace with the lowest role that can read the gold views, and grant `SELECT` only on the reporting views.
    Nothing else is needed: there is no client secret and no Key Vault.
-5. **Queries.** Point `Reporting/Sql/*.sql` at the confirmed gold views (see its README and the gap register).
+5. **Queries.** Point `Reporting/Sql/*.sql` at the confirmed gold views (see its README and the gap register), then run the
+   connection check. It signs in, runs every KPI query once and prints the row count or the Fabric error per query,
+   which names any missing view or column:
+   ```bash
+   # from a workstation, signed in with `az login` as someone who can read the gold views
+   cd backend/src/Aegi.Vas.Dashboard.Api
+   Fabric__SqlEndpoint=<endpoint> Fabric__Database=<lakehouse> Fabric__Credential=Default dotnet run -- --check-fabric
+   # in the deployed container (uses the managed identity): dotnet Aegi.Vas.Dashboard.Api.dll --check-fabric
+   ```
 6. **Telemetry.** Set `ApplicationInsights:ConnectionString`.
 
 Settings can also be supplied as App Service application settings (`Section__Key`), which take precedence over the files.

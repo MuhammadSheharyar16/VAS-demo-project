@@ -65,6 +65,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 
 var app = builder.Build();
 
+// One-off connection check against the configured Fabric endpoint; runs the KPI queries and exits without serving.
+if (args.Contains("--check-fabric"))
+    return await FabricPreflight.RunAsync(app.Services);
+
 app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
@@ -105,5 +109,6 @@ app.MapFallback("/api/{**path}", () => Results.Problem(statusCode: 404, title: "
 app.MapFallbackToFile("index.html");
 
 app.Run();
+return 0;
 
 public partial class Program;

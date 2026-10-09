@@ -60,8 +60,9 @@ button { font: inherit }
 /* Page */
 .stage { perspective: 1400px; margin-top: 24px }
 .view { transform-origin: 50% 0 }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 14px }
-.kpi { position: relative; overflow: hidden; background: linear-gradient(160deg, var(--panel), var(--bg2)); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; transform-style: preserve-3d; transition: border-color .25s; min-height: 118px }
+/* Flex rather than grid so a short last row (nine cards wrap as five and four) stretches to fill the width. */
+.kpis { display: flex; flex-wrap: wrap; gap: 14px }
+.kpi { flex: 1 1 210px; position: relative; overflow: hidden; background: linear-gradient(160deg, var(--panel), var(--bg2)); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; transform-style: preserve-3d; transition: border-color .25s; min-height: 118px }
 .kpi:hover { border-color: var(--line2) }
 .kpi::after { content: ""; position: absolute; inset: 0; background: radial-gradient(240px 120px at var(--mx, 50%) var(--my, 0%), rgba(241, 216, 145, .12), transparent 70%); pointer-events: none }
 .kpi .lab { color: var(--muted); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; display: flex; justify-content: space-between; align-items: start; gap: 8px }

@@ -5,7 +5,15 @@ using System.Text.RegularExpressions;
 namespace Aegi.Vas.Dashboard.Api.Reporting;
 
 /// <summary>Validated reporting filter. Months are inclusive, formatted yyyy-MM.</summary>
-public sealed record ReportFilter(string From, string To, string? Country, string? Centre);
+public sealed record ReportFilter(string From, string To, string? Country, string? Centre, string? VisaType)
+{
+    /// <summary>The period of the same length that ends the month before this one starts.</summary>
+    public ReportFilter PreviousPeriod()
+    {
+        var months = ReportFilterValidator.MonthsBetween(From, To);
+        return this with { From = ReportFilterValidator.AddMonths(From, -months), To = ReportFilterValidator.AddMonths(From, -1) };
+    }
+}
 
 public static partial class ReportFilterValidator
 {
@@ -13,11 +21,11 @@ public static partial class ReportFilterValidator
     private static partial Regex MonthPattern();
 
     /// <summary>
-    /// Checks shape and checks country/centre against values that exist in the reporting data.
+    /// Checks shape and checks country/centre/visa type against values that exist in the reporting data.
     /// A valid filter narrows the result; it is never treated as proof of permission.
     /// </summary>
     public static Dictionary<string, string[]> Validate(
-        string from, string to, string? country, string? centre, FilterOptions options)
+        string from, string to, string? country, string? centre, string? visaType, FilterOptions options)
     {
         var errors = new Dictionary<string, string[]>();
         if (!MonthPattern().IsMatch(from)) errors["from"] = ["Use the format yyyy-MM, for example 2026-01."];
@@ -39,13 +47,20 @@ public static partial class ReportFilterValidator
             else if (match is not null && !match.Centres.Contains(centre, StringComparer.OrdinalIgnoreCase))
                 errors["centre"] = ["Unknown centre for this country."];
         }
+        if (visaType is not null && !options.VisaTypes.Contains(visaType, StringComparer.OrdinalIgnoreCase))
+            errors["visaType"] = ["Unknown visa type."];
         return errors;
     }
 
-    private static int MonthsBetween(string from, string to)
+    public static int MonthsBetween(string from, string to)
     {
-        var a = DateTime.ParseExact(from, "yyyy-MM", CultureInfo.InvariantCulture);
-        var b = DateTime.ParseExact(to, "yyyy-MM", CultureInfo.InvariantCulture);
+        var a = Parse(from);
+        var b = Parse(to);
         return (b.Year - a.Year) * 12 + b.Month - a.Month + 1;
     }
+
+    public static string AddMonths(string month, int months) =>
+        Parse(month).AddMonths(months).ToString("yyyy-MM", CultureInfo.InvariantCulture);
+
+    private static DateTime Parse(string month) => DateTime.ParseExact(month, "yyyy-MM", CultureInfo.InvariantCulture);
 }

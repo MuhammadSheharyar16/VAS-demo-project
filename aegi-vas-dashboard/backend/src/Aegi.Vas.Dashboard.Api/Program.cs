@@ -6,19 +6,14 @@ using Aegi.Vas.Dashboard.Api.Middleware;
 using Aegi.Vas.Dashboard.Api.Reporting;
 using Aegi.Vas.Dashboard.Api.Security;
 using Aegi.Vas.Dashboard.Api.Services;
-using Azure.Identity;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
 var env = builder.Environment;
-
-// Key Vault: App Service managed identity reads only the Fabric workload credential (secret "Fabric--ClientSecret").
-var keyVaultUri = config["KeyVault:Uri"];
-if (!string.IsNullOrWhiteSpace(keyVaultUri) && !keyVaultUri.Contains('<'))
-    config.AddAzureKeyVault(new Uri(keyVaultUri), new ManagedIdentityCredential(ManagedIdentityId.SystemAssigned));
 
 builder.Services.Configure<AuthenticationSettings>(config.GetSection(AuthenticationSettings.Section));
 builder.Services.Configure<ReportingSettings>(config.GetSection(ReportingSettings.Section));
@@ -33,7 +28,10 @@ if (reporting.Source == ReportingSource.Sample)
 }
 else
 {
-    builder.Services.AddSingleton<IReportingDataSource, FabricSqlDataSource>();
+    // The App Service managed identity signs in to Fabric directly, so the app holds no secret and needs no Key Vault.
+    builder.Services.AddSingleton<FabricSqlDataSource>();
+    builder.Services.AddSingleton<IReportingDataSource>(sp => new CachedReportingDataSource(
+        sp.GetRequiredService<FabricSqlDataSource>(), sp.GetRequiredService<IMemoryCache>(), reporting.CacheSeconds));
 }
 
 builder.Services.AddSingleton(TimeProvider.System);
@@ -97,6 +95,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
+// /health/live never touches Fabric: use it as the App Service health check path, so a Fabric outage cannot recycle the instance.
+// /health/ready reports Fabric connectivity (result held for 30 seconds) for monitoring and deployment checks.
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") });
 app.MapClientConfig();

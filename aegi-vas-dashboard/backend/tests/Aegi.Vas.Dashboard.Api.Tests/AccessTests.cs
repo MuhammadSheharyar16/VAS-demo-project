@@ -31,6 +31,8 @@ public sealed class AccessTests(EntraFactory factory) : IClassFixture<EntraFacto
     [Fact] public async Task Expired_token_is_rejected() => Assert.Equal(HttpStatusCode.Unauthorized, await Call(EntraFactory.Token(lifetime: TimeSpan.FromMinutes(-5))));
     [Fact] public async Task Wrong_audience_is_rejected() => Assert.Equal(HttpStatusCode.Unauthorized, await Call(EntraFactory.Token(audience: "api://some-other-api")));
     [Fact] public async Task Wrong_issuer_is_rejected() => Assert.Equal(HttpStatusCode.Unauthorized, await Call(EntraFactory.Token(issuer: "https://login.microsoftonline.com/other-tenant/v2.0")));
+    [Fact] public async Task V1_token_from_the_same_tenant_is_allowed() => Assert.Equal(HttpStatusCode.OK, await Call(EntraFactory.Token(issuer: $"https://sts.windows.net/{EntraFactory.Tenant}/")));
+    [Fact] public async Task V2_token_with_client_id_audience_is_allowed() => Assert.Equal(HttpStatusCode.OK, await Call(EntraFactory.Token(audience: EntraFactory.Audience.Replace("api://", ""))));
     [Fact] public async Task Wrong_signing_key_is_rejected() => Assert.Equal(HttpStatusCode.Unauthorized, await Call(EntraFactory.Token(key: new RsaSecurityKey(RSA.Create(2048)) { KeyId = "test-key" })));
     [Fact] public async Task Missing_scope_is_forbidden() => Assert.Equal(HttpStatusCode.Forbidden, await Call(EntraFactory.Token(scope: null)));
     [Fact] public async Task Wrong_scope_is_forbidden() => Assert.Equal(HttpStatusCode.Forbidden, await Call(EntraFactory.Token(scope: "User.Read")));
@@ -72,7 +74,6 @@ public sealed class StartupGuardTests
         using var f = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Production");
-            b.UseSetting("KeyVault:Uri", "");
             b.UseSetting("Authentication:TenantId", EntraFactory.Tenant);
             b.UseSetting("Authentication:ApiAudience", EntraFactory.Audience);
             b.UseSetting(key, value);

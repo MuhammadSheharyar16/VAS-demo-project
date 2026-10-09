@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Data;
 using Aegi.Vas.Dashboard.Api.Configuration;
 using Aegi.Vas.Dashboard.Api.Contracts;
+using Azure.Core;
+using Azure.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
@@ -9,15 +11,18 @@ namespace Aegi.Vas.Dashboard.Api.Reporting;
 
 /// <summary>
 /// Reads approved KPI outputs from the Fabric Lakehouse SQL analytics endpoint.
-/// Signs in as the backend's own service principal (never the executive's token).
-/// Microsoft.Data.SqlClient acquires and renews the Entra token and pools connections.
+/// Signs in as the App Service managed identity (never the executive's token, and no stored secret).
+/// Azure.Identity acquires and renews the Entra token; Microsoft.Data.SqlClient pools the connections.
 /// </summary>
 public sealed class FabricSqlDataSource : IReportingDataSource
 {
+    private static readonly string[] SqlScope = ["https://database.windows.net/.default"];
     private static readonly ConcurrentDictionary<string, string> QueryCache = new();
     private readonly string _connectionString;
     private readonly int _timeout;
     private readonly ILogger<FabricSqlDataSource> _log;
+    // One delegate instance for the lifetime of the app, so every connection shares one pool.
+    private readonly Func<SqlAuthenticationParameters, CancellationToken, Task<SqlAuthenticationToken>> _tokenCallback;
 
     public string Name => "Microsoft Fabric";
 
@@ -30,15 +35,25 @@ public sealed class FabricSqlDataSource : IReportingDataSource
         {
             DataSource = $"{s.SqlEndpoint},1433",
             InitialCatalog = s.Database,
-            Authentication = SqlAuthenticationMethod.ActiveDirectoryServicePrincipal,
-            UserID = s.ClientId,
-            Password = s.ClientSecret,
-            Encrypt = SqlConnectionEncryptOption.Strict,
+            Encrypt = s.Encrypt.Equals("Strict", StringComparison.OrdinalIgnoreCase)
+                ? SqlConnectionEncryptOption.Strict : SqlConnectionEncryptOption.Mandatory,
+            TrustServerCertificate = false,
             ApplicationIntent = ApplicationIntent.ReadOnly,
             ApplicationName = "AEGI-VAS-Dashboard-API",
             ConnectTimeout = 30,
             Pooling = true,
         }.ConnectionString;
+
+        TokenCredential credential = s.Credential == FabricCredential.ManagedIdentity
+            ? new ManagedIdentityCredential(string.IsNullOrWhiteSpace(s.ManagedIdentityClientId)
+                ? ManagedIdentityId.SystemAssigned
+                : ManagedIdentityId.FromUserAssignedClientId(s.ManagedIdentityClientId))
+            : new DefaultAzureCredential();
+        _tokenCallback = async (_, ct) =>
+        {
+            var token = await credential.GetTokenAsync(new TokenRequestContext(SqlScope), ct);
+            return new SqlAuthenticationToken(token.Token, token.ExpiresOn);
+        };
     }
 
     public Task<IReadOnlyList<VolumeRow>> GetVolumeAsync(ReportFilter f, CancellationToken ct) =>
@@ -50,26 +65,37 @@ public sealed class FabricSqlDataSource : IReportingDataSource
     public Task<IReadOnlyList<ClosureRow>> GetClosureAsync(ReportFilter f, CancellationToken ct) =>
         QueryAsync("Closure", f, null, r => new ClosureRow(r.GetString("month"), r.GetInt64Any("closed"), r.GetInt64Any("total")), ct);
 
+    public Task<IReadOnlyList<StageRow>> GetStagesAsync(ReportFilter f, CancellationToken ct) =>
+        QueryAsync("Stages", f, null, r => new StageRow(r.GetString("stage"), (int)r.GetInt64Any("stage_order"),
+            r.GetString("journey").ToLowerInvariant(), r.GetInt64Any("applications")), ct);
+
     public Task<IReadOnlyList<TurnaroundRow>> GetTurnaroundAsync(ReportFilter f, string journey, CancellationToken ct) =>
         QueryAsync("Turnaround", f, journey, r => new TurnaroundRow(r.GetString("visa_type"), r.GetDecimalAny("avg_days"), r.GetInt64Any("applications")), ct);
 
     public Task<IReadOnlyList<RevenueRow>> GetRevenueAsync(ReportFilter f, CancellationToken ct) =>
-        QueryAsync("Revenue", f, null, r => new RevenueRow(r.GetString("country"), r.GetString("centre"), r.GetDecimalAny("revenue")), ct);
+        QueryAsync("Revenue", f, null, r => new RevenueRow(r.GetString("country"), r.GetString("centre"), r.GetString("visa_type"), r.GetDecimalAny("revenue")), ct);
 
     public Task<IReadOnlyList<VisaTypeAggRow>> GetVisaTypesAsync(ReportFilter f, CancellationToken ct) =>
         QueryAsync("VisaTypes", f, null, r => new VisaTypeAggRow(r.GetString("visa_type"), r.GetInt64Any("volume"),
             r.GetInt64Any("approved"), r.GetInt64Any("rejected"), r.GetInt64Any("pending"), r.GetInt64Any("closed")), ct);
 
+    public Task<IReadOnlyList<CentreRow>> GetCentresAsync(ReportFilter f, CancellationToken ct) =>
+        QueryAsync("Centres", f, null, r => new CentreRow(r.GetString("country"), r.GetString("centre"),
+            r.GetInt64Any("applications"), r.GetInt64Any("centre_journey"), r.GetInt64Any("processed"), r.GetInt64Any("approved"),
+            r.GetDecimalAny("turnaround_days"), r.GetDecimalAny("revenue"),
+            r["capacity"] is DBNull ? null : r.GetInt64Any("capacity")), ct);
+
     public async Task<FilterOptions> GetFilterOptionsAsync(CancellationToken ct)
     {
         var rows = await RunAsync(Sql("FilterOptions"), _ => { }, r => (
-            Country: r.GetString("country"), Centre: r.GetString("centre"),
+            Country: r.GetString("country"), Centre: r.GetString("centre"), VisaType: r.GetString("visa_type"),
             Min: r.GetString("min_month"), Max: r.GetString("max_month")), ct);
-        if (rows.Count == 0) return new FilterOptions("", "", []);
+        if (rows.Count == 0) return new FilterOptions("", "", [], []);
         var countries = rows.GroupBy(r => r.Country)
             .Select(g => new CountryOption(g.Key, g.Select(x => x.Centre).Distinct().OrderBy(x => x).ToList()))
             .OrderBy(c => c.Country).ToList();
-        return new FilterOptions(rows.Min(r => r.Min)!, rows.Max(r => r.Max)!, countries);
+        return new FilterOptions(rows.Min(r => r.Min)!, rows.Max(r => r.Max)!, countries,
+            rows.Select(r => r.VisaType).Distinct().OrderBy(x => x).ToList());
     }
 
     public async Task<DateTimeOffset?> GetLastRefreshedUtcAsync(CancellationToken ct)
@@ -92,6 +118,7 @@ public sealed class FabricSqlDataSource : IReportingDataSource
             p.Add("@To", SqlDbType.Char, 7).Value = f.To;
             p.Add("@Country", SqlDbType.NVarChar, 100).Value = (object?)f.Country ?? DBNull.Value;
             p.Add("@Centre", SqlDbType.NVarChar, 100).Value = (object?)f.Centre ?? DBNull.Value;
+            p.Add("@VisaType", SqlDbType.NVarChar, 100).Value = (object?)f.VisaType ?? DBNull.Value;
             if (journey is not null) p.Add("@Journey", SqlDbType.NVarChar, 20).Value = journey;
         }, map, ct);
 
@@ -99,7 +126,7 @@ public sealed class FabricSqlDataSource : IReportingDataSource
     {
         try
         {
-            await using var conn = new SqlConnection(_connectionString);
+            await using var conn = new SqlConnection(_connectionString) { AccessTokenCallback = _tokenCallback };
             await conn.OpenAsync(ct);
             await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = _timeout };
             bind(cmd.Parameters);
@@ -108,9 +135,10 @@ public sealed class FabricSqlDataSource : IReportingDataSource
             while (await reader.ReadAsync(ct)) list.Add(map(reader));
             return list;
         }
-        catch (SqlException ex)
+        // Anything that stops us reaching Fabric (SQL error, token failure, pool exhaustion, timeout) is an outage to the caller.
+        catch (Exception ex) when (ex is SqlException or AuthenticationFailedException or InvalidOperationException or TimeoutException)
         {
-            _log.LogError(ex, "Fabric query failed (error {Number})", ex.Number);
+            _log.LogError(ex, "Fabric query failed ({Kind}, SQL error {Number})", ex.GetType().Name, (ex as SqlException)?.Number);
             throw new ReportingUnavailableException("Reporting data is temporarily unavailable.", ex);
         }
     }

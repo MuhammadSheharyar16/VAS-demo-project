@@ -39,7 +39,6 @@ public class EntraFactory : WebApplicationFactory<Program>
         builder.UseSetting("Authentication:ApiAudience", Audience);
         builder.UseSetting("Authentication:SpaClientId", "33333333-3333-3333-3333-333333333333");
         builder.UseSetting("Reporting:Source", "Fabric");
-        builder.UseSetting("KeyVault:Uri", "");
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IReportingDataSource>();
@@ -88,6 +87,8 @@ public sealed class OutageFactory : EntraFactory
         public Task<IReadOnlyList<VolumeRow>> GetVolumeAsync(ReportFilter f, CancellationToken ct) => Fail<IReadOnlyList<VolumeRow>>();
         public Task<IReadOnlyList<OutcomeRow>> GetOutcomesAsync(ReportFilter f, CancellationToken ct) => Fail<IReadOnlyList<OutcomeRow>>();
         public Task<IReadOnlyList<ClosureRow>> GetClosureAsync(ReportFilter f, CancellationToken ct) => Fail<IReadOnlyList<ClosureRow>>();
+        public Task<IReadOnlyList<StageRow>> GetStagesAsync(ReportFilter f, CancellationToken ct) => Fail<IReadOnlyList<StageRow>>();
+        public Task<IReadOnlyList<CentreRow>> GetCentresAsync(ReportFilter f, CancellationToken ct) => Fail<IReadOnlyList<CentreRow>>();
         public Task<IReadOnlyList<TurnaroundRow>> GetTurnaroundAsync(ReportFilter f, string j, CancellationToken ct) => Fail<IReadOnlyList<TurnaroundRow>>();
         public Task<IReadOnlyList<RevenueRow>> GetRevenueAsync(ReportFilter f, CancellationToken ct) => Fail<IReadOnlyList<RevenueRow>>();
         public Task<IReadOnlyList<VisaTypeAggRow>> GetVisaTypesAsync(ReportFilter f, CancellationToken ct) => Fail<IReadOnlyList<VisaTypeAggRow>>();

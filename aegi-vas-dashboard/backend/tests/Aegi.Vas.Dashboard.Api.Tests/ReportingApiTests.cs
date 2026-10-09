@@ -12,7 +12,7 @@ public sealed class ReportingApiTests(DevelopmentFactory factory) : IClassFixtur
     [
         "/api/v1/executive-summary", "/api/v1/vas/volume", "/api/v1/vas/outcomes", "/api/v1/vas/closure",
         "/api/v1/vas/turnaround?journey=digital", "/api/v1/vas/turnaround?journey=centre",
-        "/api/v1/vas/revenue", "/api/v1/vas/visa-types",
+        "/api/v1/vas/revenue", "/api/v1/vas/visa-types", "/api/v1/vas/stages", "/api/v1/vas/centres",
     ];
 
     [Theory, MemberData(nameof(Endpoints))]
@@ -28,14 +28,117 @@ public sealed class ReportingApiTests(DevelopmentFactory factory) : IClassFixtur
     }
 
     [Fact]
-    public async Task Summary_matches_volume_endpoint_and_has_six_kpis()
+    public async Task Summary_has_the_agreed_kpis_and_matches_the_volume_endpoint()
     {
-        var summary = await _client.GetFromJsonAsync<JsonElement>("/api/v1/executive-summary");
+        var summary = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/executive-summary")).GetProperty("data");
         var volume = await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/volume");
-        var kpis = summary.GetProperty("data").GetProperty("kpis").EnumerateArray().ToList();
-        Assert.Equal(6, kpis.Count);
-        Assert.Equal(volume.GetProperty("data").GetProperty("total").GetInt64(), kpis[0].GetProperty("value").GetInt64());
-        Assert.Contains("CSAT", summary.GetProperty("data").GetProperty("comingSoon").EnumerateArray().Select(x => x.GetString()));
+        var kpis = summary.GetProperty("kpis").EnumerateArray().ToDictionary(k => k.GetProperty("key").GetString()!, k => k.GetProperty("value").GetDecimal());
+        Assert.Equal(
+            ["applications_received", "applications_processed", "applications_pending", "approval_rate", "rejection_rate",
+             "closure_rate", "turnaround_digital", "turnaround_centre", "revenue"], kpis.Keys);
+        Assert.Equal(volume.GetProperty("data").GetProperty("total").GetInt64(), (long)kpis["applications_received"]);
+        Assert.Equal(kpis["applications_received"], kpis["applications_processed"] + kpis["applications_pending"]);
+        Assert.Equal(volume.GetProperty("data").GetProperty("total").GetInt64(), summary.GetProperty("volume").GetProperty("total").GetInt64());
+        // Requirements section 2: only Operations, Finance and Alfit are Coming Soon. CSAT is out of scope.
+        Assert.Equal(["Operations", "Finance", "Alfit"], summary.GetProperty("comingSoon").EnumerateArray().Select(x => x.GetString()));
+    }
+
+    [Fact]
+    public async Task Summary_compares_with_the_previous_period_of_the_same_length()
+    {
+        var q3 = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/executive-summary?from=2026-07&to=2026-09")).GetProperty("data");
+        var q2 = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/executive-summary?from=2026-04&to=2026-06")).GetProperty("data");
+        Assert.Equal("2026-04", q3.GetProperty("comparedWith").GetProperty("from").GetString());
+        Assert.Equal("2026-06", q3.GetProperty("comparedWith").GetProperty("to").GetString());
+
+        JsonElement Kpi(JsonElement s, string key) => s.GetProperty("kpis").EnumerateArray().Single(k => k.GetProperty("key").GetString() == key);
+        var received = Kpi(q3, "applications_received");
+        var before = Kpi(q2, "applications_received").GetProperty("value").GetDecimal();
+        Assert.Equal(before, received.GetProperty("previous").GetDecimal());
+        Assert.Equal(Math.Round((received.GetProperty("value").GetDecimal() - before) / before * 100, 1), received.GetProperty("change").GetDecimal());
+        Assert.Equal("percent", received.GetProperty("changeUnit").GetString());
+        Assert.Equal("points", Kpi(q3, "approval_rate").GetProperty("changeUnit").GetString());
+        Assert.Equal("days", Kpi(q3, "turnaround_centre").GetProperty("changeUnit").GetString());
+    }
+
+    [Fact]
+    public async Task Summary_without_an_earlier_period_shows_no_comparison()
+    {
+        var ytd = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/executive-summary")).GetProperty("data");
+        Assert.Equal(JsonValueKind.Null, ytd.GetProperty("comparedWith").ValueKind);
+        Assert.All(ytd.GetProperty("kpis").EnumerateArray(), k => Assert.Equal(JsonValueKind.Null, k.GetProperty("change").ValueKind));
+    }
+
+    [Fact]
+    public async Task Kpi_status_follows_the_configured_thresholds()
+    {
+        // Development settings: approval_rate Watch 88, Poor 85 (higher is better); turnaround_centre Watch 3.5, Poor 5 (lower is better).
+        var kpis = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/executive-summary")).GetProperty("data").GetProperty("kpis").EnumerateArray().ToList();
+        string? Expected(decimal v, decimal watch, decimal poor, bool higherIsBetter) =>
+            higherIsBetter ? v < poor ? "poor" : v < watch ? "watch" : "good" : v > poor ? "poor" : v > watch ? "watch" : "good";
+        var approval = kpis.Single(k => k.GetProperty("key").GetString() == "approval_rate");
+        var centre = kpis.Single(k => k.GetProperty("key").GetString() == "turnaround_centre");
+        Assert.Equal(Expected(approval.GetProperty("value").GetDecimal(), 88, 85, true), approval.GetProperty("status").GetString());
+        Assert.Equal(Expected(centre.GetProperty("value").GetDecimal(), 3.5m, 5, false), centre.GetProperty("status").GetString());
+        // No threshold agreed for volumes, so no status is invented.
+        Assert.Equal(JsonValueKind.Null, kpis[0].GetProperty("status").ValueKind);
+    }
+
+    [Fact]
+    public async Task Visa_type_filter_narrows_every_view()
+    {
+        long Total(JsonElement e) => e.GetProperty("data").GetProperty("total").GetInt64();
+        var all = await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/volume");
+        var work = await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/volume?visaType=work");
+        Assert.True(Total(all) > Total(work) && Total(work) > 0);
+        Assert.Equal("Work", work.GetProperty("meta").GetProperty("filters").GetProperty("visaType").GetString());
+
+        var types = await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/visa-types?visaType=Work");
+        Assert.Equal("Work", types.GetProperty("data").GetProperty("visaTypes").EnumerateArray().Single().GetProperty("visaType").GetString());
+        var revenue = await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/revenue?visaType=Work");
+        Assert.Equal("Work", revenue.GetProperty("data").GetProperty("byVisaType").EnumerateArray().Single().GetProperty("visaType").GetString());
+    }
+
+    [Fact]
+    public async Task Revenue_breakdowns_add_up_to_the_total()
+    {
+        var data = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/revenue")).GetProperty("data");
+        var total = data.GetProperty("total").GetDecimal();
+        Assert.Equal(total, data.GetProperty("countries").EnumerateArray().Sum(c => c.GetProperty("revenue").GetDecimal()));
+        Assert.Equal(total, data.GetProperty("byVisaType").EnumerateArray().Sum(c => c.GetProperty("revenue").GetDecimal()));
+        Assert.Equal(6, data.GetProperty("byVisaType").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Stages_are_ordered_and_never_grow()
+    {
+        var stages = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/stages")).GetProperty("data").GetProperty("stages").EnumerateArray().ToList();
+        var outcomes = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/outcomes")).GetProperty("data");
+        Assert.Equal(["Submitted", "In review", "Decided", "Closed"], stages.Select(s => s.GetProperty("stage").GetString()));
+        Assert.Equal(outcomes.GetProperty("received").GetInt64(), stages[0].GetProperty("total").GetInt64());
+        Assert.Equal(100m, stages[0].GetProperty("percentOfFirst").GetDecimal());
+        var totals = stages.Select(s => s.GetProperty("total").GetInt64()).ToList();
+        Assert.Equal(totals.OrderByDescending(t => t), totals);
+        Assert.All(stages, s => Assert.Equal(s.GetProperty("total").GetInt64(), s.GetProperty("centre").GetInt64() + s.GetProperty("digital").GetInt64()));
+    }
+
+    [Fact]
+    public async Task Centre_performance_covers_every_centre_and_hides_utilisation_for_a_visa_type()
+    {
+        var centres = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/centres")).GetProperty("data").GetProperty("centres").EnumerateArray().ToList();
+        var volume = await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/volume");
+        Assert.Equal(11, centres.Count);
+        Assert.Equal(volume.GetProperty("data").GetProperty("total").GetInt64(), centres.Sum(c => c.GetProperty("applications").GetInt64()));
+        Assert.All(centres, c =>
+        {
+            Assert.Equal(c.GetProperty("applications").GetInt64(), c.GetProperty("centreJourney").GetInt64() + c.GetProperty("digital").GetInt64());
+            Assert.InRange(c.GetProperty("utilisationPercent").GetDecimal(), 1, 200);
+            Assert.True(c.GetProperty("avgTurnaroundDays").GetDecimal() > 0);
+        });
+
+        var uae = (await _client.GetFromJsonAsync<JsonElement>("/api/v1/vas/centres?country=UAE&visaType=Work")).GetProperty("data").GetProperty("centres").EnumerateArray().ToList();
+        Assert.Equal(2, uae.Count);
+        Assert.All(uae, c => Assert.Equal(JsonValueKind.Null, c.GetProperty("utilisationPercent").ValueKind));
     }
 
     [Fact]
@@ -63,7 +166,8 @@ public sealed class ReportingApiTests(DevelopmentFactory factory) : IClassFixtur
         var res = await _client.GetFromJsonAsync<JsonElement>("/api/v1/executive-summary?from=2025-01&to=2025-03");
         var kpis = res.GetProperty("data").GetProperty("kpis");
         Assert.Equal(0, kpis[0].GetProperty("value").GetInt64());
-        Assert.Equal(JsonValueKind.Null, kpis[1].GetProperty("value").ValueKind);
+        Assert.Equal("approval_rate", kpis[3].GetProperty("key").GetString());
+        Assert.Equal(JsonValueKind.Null, kpis[3].GetProperty("value").ValueKind);
     }
 
     [Theory]
@@ -74,6 +178,7 @@ public sealed class ReportingApiTests(DevelopmentFactory factory) : IClassFixtur
     [InlineData("/api/v1/vas/volume?centre=Dubai")]
     [InlineData("/api/v1/vas/volume?country=UAE&centre=Riyadh")]
     [InlineData("/api/v1/vas/volume?country=UAE';DROP TABLE x;--")]
+    [InlineData("/api/v1/vas/volume?visaType=Diplomatic")]
     [InlineData("/api/v1/vas/turnaround?journey=both")]
     public async Task Invalid_filters_get_problem_details(string path)
     {
@@ -91,6 +196,7 @@ public sealed class ReportingApiTests(DevelopmentFactory factory) : IClassFixtur
         var res = await _client.GetFromJsonAsync<JsonElement>("/api/v1/filters");
         var uae = res.GetProperty("countries").EnumerateArray().Single(c => c.GetProperty("country").GetString() == "UAE");
         Assert.Contains("Dubai", uae.GetProperty("centres").EnumerateArray().Select(x => x.GetString()));
+        Assert.Contains("Tourist", res.GetProperty("visaTypes").EnumerateArray().Select(x => x.GetString()));
     }
 
     [Fact]

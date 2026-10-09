@@ -7,6 +7,7 @@ SELECT p.visa_type,
        SUM(p.closed_count)   AS closed
 FROM gold.vw_vas_visa_type_performance AS p
 WHERE p.month_key BETWEEN @From AND @To
-  AND (@Country IS NULL OR p.country = @Country)
-  AND (@Centre  IS NULL OR p.centre  = @Centre)
+  AND (@Country  IS NULL OR p.country   = @Country)
+  AND (@Centre   IS NULL OR p.centre    = @Centre)
+  AND (@VisaType IS NULL OR p.visa_type = @VisaType)
 GROUP BY p.visa_type;

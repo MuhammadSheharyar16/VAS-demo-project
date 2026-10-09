@@ -40,7 +40,7 @@ button { font: inherit }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0 }
 .empty { display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--line2); border-radius: 10px; padding: 20px; text-align: center }
 .ref { display: block; color: var(--muted); font-size: 11.5px; margin-top: 2px }
-.kpi .na { color: var(--faint) }
+.na { color: var(--faint) }
 .share { display: flex; align-items: center; gap: 10px } .share span { color: var(--muted); font-size: 12px; min-width: 42px }
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; animation: pulse 2s infinite }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(79, 199, 154, .5) } 70% { box-shadow: 0 0 0 8px rgba(79, 199, 154, 0) } 100% { box-shadow: 0 0 0 0 rgba(79, 199, 154, 0) } }
@@ -64,7 +64,12 @@ button { font: inherit }
 .kpi { position: relative; overflow: hidden; background: linear-gradient(160deg, var(--panel), var(--bg2)); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; transform-style: preserve-3d; transition: border-color .25s; min-height: 118px }
 .kpi:hover { border-color: var(--line2) }
 .kpi::after { content: ""; position: absolute; inset: 0; background: radial-gradient(240px 120px at var(--mx, 50%) var(--my, 0%), rgba(241, 216, 145, .12), transparent 70%); pointer-events: none }
-.kpi .lab { color: var(--muted); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600 }
+.kpi .lab { color: var(--muted); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; display: flex; justify-content: space-between; align-items: start; gap: 8px }
+.status { flex: none; font-size: 10px; letter-spacing: .06em; border-radius: 999px; padding: 1px 7px; border: 1px solid currentColor; white-space: nowrap }
+.status.good { color: var(--ok) } .status.watch { color: var(--warn) } .status.poor { color: var(--bad) }
+.delta { font-size: 12px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums }
+.delta.good { color: var(--ok) } .delta.poor { color: var(--bad) } .delta.flat { color: var(--muted) }
+.delta .vs { color: var(--faint); font-weight: 400 }
 .kpi .val { font-family: var(--display); font-size: 34px; line-height: 1.15; margin-top: 6px; font-variant-numeric: tabular-nums }
 .kpi .val .u { font-family: var(--body); font-size: 15px; color: var(--muted); margin-left: 4px }
 .kpi .row { display: flex; justify-content: space-between; align-items: end; gap: 8px; margin-top: 6px; min-height: 30px }
@@ -113,4 +118,14 @@ tbody tr { transition: background .2s } tbody tr:hover { background: rgba(214, 1
 .signin h1 { font-family: var(--display); font-weight: 400; color: var(--fg); margin: 6px 0 0 }
 .signin p { margin: 0 }
 footer { color: var(--faint); font-size: 12px; margin-top: 26px; text-align: center }
+th.rowhead { font-weight: 600; color: var(--fg); text-transform: none; letter-spacing: 0; font-size: 14px }
+.barlist, .stages { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px }
+.barlist li { display: grid; grid-template-columns: minmax(64px, 96px) 1fr auto; gap: 10px; align-items: center }
+.bl-label { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.bl-track, .st-track { display: flex; height: 12px; border-radius: 6px; background: rgba(34, 54, 90, .5); overflow: hidden }
+.bl-track i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--gold), var(--gold2)) }
+.bl-value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap } .bl-value small { color: var(--muted); font-weight: 400 }
+.st-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 5px } .st-head b { font-weight: 600 }
+.st-head span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums }
+.st-track { height: 16px } .st-track i { display: block; height: 100% }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important } }

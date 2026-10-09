@@ -1,7 +1,7 @@
 const COPY = {
-  ops: ['Operations', 'Centre capacity, queue times and staffing views will appear here once operational data is onboarded.'],
-  fin: ['Finance', 'Cost, margin and billing reporting is planned for a later phase.'],
-  alfit: ['Alfit', 'Alfit reporting will join the dashboard when its data source is brought into scope.'],
+  ops: ['Operations', 'Operational reporting will appear here in a later phase.'],
+  fin: ['Finance', 'Financial reporting will appear here in a later phase.'],
+  alfit: ['Alfit', "Reporting for AEGI's insurance business will appear here in a later phase."],
 }
 
 export default function ComingSoon({ tab }) {

@@ -6,6 +6,7 @@ SELECT t.visa_type,
 FROM gold.vw_vas_turnaround AS t
 WHERE t.month_key BETWEEN @From AND @To
   AND t.journey = @Journey
-  AND (@Country IS NULL OR t.country = @Country)
-  AND (@Centre  IS NULL OR t.centre  = @Centre)
+  AND (@Country  IS NULL OR t.country   = @Country)
+  AND (@Centre   IS NULL OR t.centre    = @Centre)
+  AND (@VisaType IS NULL OR t.visa_type = @VisaType)
 GROUP BY t.visa_type;

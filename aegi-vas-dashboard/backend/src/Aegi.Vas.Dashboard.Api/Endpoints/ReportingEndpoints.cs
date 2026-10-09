@@ -1,10 +1,8 @@
-using Aegi.Vas.Dashboard.Api.Configuration;
 using Aegi.Vas.Dashboard.Api.Contracts;
 using Aegi.Vas.Dashboard.Api.Reporting;
 using Aegi.Vas.Dashboard.Api.Security;
 using Aegi.Vas.Dashboard.Api.Services;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Options;
 
 namespace Aegi.Vas.Dashboard.Api.Endpoints;
 
@@ -28,6 +26,8 @@ public static class ReportingEndpoints
         vas.MapGet("/volume", (HttpContext http, KpiService svc, CancellationToken ct) => Run(http, svc, (f, c) => svc.VolumeAsync(f, c), ct));
         vas.MapGet("/outcomes", (HttpContext http, KpiService svc, CancellationToken ct) => Run(http, svc, (f, c) => svc.OutcomesAsync(f, c), ct));
         vas.MapGet("/closure", (HttpContext http, KpiService svc, CancellationToken ct) => Run(http, svc, (f, c) => svc.ClosureAsync(f, c), ct));
+        vas.MapGet("/stages", (HttpContext http, KpiService svc, CancellationToken ct) => Run(http, svc, (f, c) => svc.StagesAsync(f, c), ct));
+        vas.MapGet("/centres", (HttpContext http, KpiService svc, CancellationToken ct) => Run(http, svc, (f, c) => svc.CentresAsync(f, c), ct));
         vas.MapGet("/revenue", (HttpContext http, KpiService svc, CancellationToken ct) => Run(http, svc, (f, c) => svc.RevenueAsync(f, c), ct));
         vas.MapGet("/visa-types", (HttpContext http, KpiService svc, CancellationToken ct) => Run(http, svc, (f, c) => svc.VisaTypesAsync(f, c), ct));
         vas.MapGet("/turnaround", (HttpContext http, KpiService svc, string? journey, CancellationToken ct) =>
@@ -39,25 +39,29 @@ public static class ReportingEndpoints
     private static async Task<IResult> Run<T>(HttpContext http, KpiService svc, Func<ReportFilter, CancellationToken, Task<T>> load, CancellationToken ct)
     {
         var q = http.Request.Query;
-        var reporting = http.RequestServices.GetRequiredService<IOptions<ReportingSettings>>().Value;
         string? Opt(string key) => string.IsNullOrWhiteSpace(q[key]) ? null : q[key].ToString().Trim();
-        var from = Opt("from") ?? reporting.DefaultFrom;
-        var to = Opt("to") ?? reporting.DefaultTo;
         var country = Opt("country");
         var centre = Opt("centre");
+        var visaType = Opt("visaType");
 
-        // Only look up the known countries/centres when a location filter was sent.
-        var options = country is null && centre is null
-            ? new FilterOptions("", "", [])
-            : await FilterOptionsAsync(http.RequestServices.GetRequiredService<IReportingDataSource>(),
-                http.RequestServices.GetRequiredService<IMemoryCache>(), ct);
-        var errors = ReportFilterValidator.Validate(from, to, country, centre, options);
+        var options = await FilterOptionsAsync(http.RequestServices.GetRequiredService<IReportingDataSource>(),
+            http.RequestServices.GetRequiredService<IMemoryCache>(), ct);
+
+        // No period sent: year to date, ending at the latest month the reporting data holds.
+        var latest = options.MaxMonth.Length == 7
+            ? options.MaxMonth
+            : http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
+        var to = Opt("to") ?? latest;
+        var from = Opt("from") ?? (to.Length >= 4 ? $"{to[..4]}-01" : to);
+
+        var errors = ReportFilterValidator.Validate(from, to, country, centre, visaType, options);
         if (errors.Count > 0) return ValidationProblem(errors);
 
         // Use canonical casing from the data so queries match exactly.
         var canonCountry = options.Countries.FirstOrDefault(c => c.Country.Equals(country, StringComparison.OrdinalIgnoreCase));
         var filter = new ReportFilter(from, to, canonCountry?.Country,
-            canonCountry?.Centres.FirstOrDefault(c => c.Equals(centre, StringComparison.OrdinalIgnoreCase)));
+            canonCountry?.Centres.FirstOrDefault(c => c.Equals(centre, StringComparison.OrdinalIgnoreCase)),
+            options.VisaTypes.FirstOrDefault(v => v.Equals(visaType, StringComparison.OrdinalIgnoreCase)));
 
         var data = await load(filter, ct);
         var meta = await svc.MetaAsync(filter, http.TraceIdentifier, ct);
@@ -67,7 +71,7 @@ public static class ReportingEndpoints
     private static IResult ValidationProblem(Dictionary<string, string[]> errors) =>
         Results.ValidationProblem(errors, title: "Some filters are not valid.");
 
-    // Countries and centres change only with the gold refresh; a short cache avoids a query per filtered request.
+    // Countries, centres and visa types change only with the gold refresh; a short cache avoids a query per request.
     // Not permission-scoped: every authorised executive shares the same reporting scope (roadmap assumption).
     private static Task<FilterOptions> FilterOptionsAsync(IReportingDataSource source, IMemoryCache cache, CancellationToken ct) =>
         cache.GetOrCreateAsync("filter-options", e =>

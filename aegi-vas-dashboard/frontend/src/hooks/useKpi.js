@@ -1,10 +1,10 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { kpiApi } from '../api/kpis'
 
-// Changing a filter changes the query key, which repeats the reporting request (roadmap step 9).
+// Changing a filter changes the query key, which repeats the reporting request.
 export function useKpi(name, filters) {
   return useQuery({
-    queryKey: [name, filters.from, filters.to, filters.country ?? '', filters.centre ?? ''],
+    queryKey: [name, filters.from, filters.to, filters.country ?? '', filters.centre ?? '', filters.visaType ?? ''],
     queryFn: ({ signal }) => kpiApi[name](filters, signal),
     placeholderData: keepPreviousData,
   })

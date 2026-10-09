@@ -17,6 +17,9 @@ public static class AuthenticationSetup
     /// Entra mode validates the executive's API access token: signature (tenant signing keys), issuer,
     /// audience (this API) and lifetime. The DashboardAccess policy then requires the delegated scope
     /// and the assigned app role. The executive token is only ever used to call this API.
+    /// Both token formats are accepted, because the API registration decides which one Entra issues:
+    /// v2 (issuer login.microsoftonline.com/{tenant}/v2.0, audience = client ID) and
+    /// v1 (issuer sts.windows.net/{tenant}/, audience = Application ID URI).
     /// </summary>
     public static IServiceCollection AddDashboardAuthentication(this IServiceCollection services, IConfiguration config, IHostEnvironment env)
     {
@@ -38,8 +41,13 @@ public static class AuthenticationSetup
             {
                 o.Authority = $"https://login.microsoftonline.com/{auth.TenantId}/v2.0";
                 o.MapInboundClaims = false; // keep Entra claim names: scp, roles, oid
-                o.TokenValidationParameters.ValidAudiences = [auth.ApiAudience, auth.ApiAudience.Replace("api://", "", StringComparison.Ordinal)];
-                o.TokenValidationParameters.ValidIssuer = $"https://login.microsoftonline.com/{auth.TenantId}/v2.0";
+                o.TokenValidationParameters.ValidAudiences = new[] { auth.ApiAudience, auth.ApiClientId, auth.ApiAudience.Replace("api://", "", StringComparison.Ordinal) }
+                    .Where(a => !string.IsNullOrWhiteSpace(a)).Distinct().ToArray();
+                o.TokenValidationParameters.ValidIssuers =
+                [
+                    $"https://login.microsoftonline.com/{auth.TenantId}/v2.0",
+                    $"https://sts.windows.net/{auth.TenantId}/",
+                ];
                 o.TokenValidationParameters.ValidateIssuer = true;
                 o.TokenValidationParameters.ValidateAudience = true;
                 o.TokenValidationParameters.ValidateLifetime = true;

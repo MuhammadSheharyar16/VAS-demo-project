@@ -1,0 +1,15 @@
+**/node_modules
+**/bin
+**/obj
+**/TestResults
+**/.vs
+**/*.user
+backend/src/Aegi.Vas.Dashboard.Api/wwwroot
+backend/tests
+publish
+docs
+infra
+loadtest
+.git
+.github
+*.md

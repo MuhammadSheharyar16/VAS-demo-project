@@ -1,0 +1,79 @@
+# Sample pipeline. Port these steps if AEGI's existing CI/CD platform is Azure DevOps.
+# It lives at the repository root because GitHub only reads workflows from there; the app is in aegi-vas-dashboard/.
+name: build-and-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  APP_DIR: aegi-vas-dashboard
+  IMAGE: aegi-vas-dashboard
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: aegi-vas-dashboard/frontend/package-lock.json
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build React into the API's wwwroot
+        working-directory: ${{ env.APP_DIR }}/frontend
+        run: npm ci && npm run build
+
+      - name: Test API
+        working-directory: ${{ env.APP_DIR }}/backend
+        run: dotnet test --configuration Release
+
+  container:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # federated sign-in to Azure for the registry push; no stored secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the release container
+        run: docker build -t "$IMAGE:${{ github.sha }}" "$APP_DIR"
+
+      - name: Report image size (sizing baseline, "Container image size")
+        run: |
+          size=$(docker image inspect "$IMAGE:${{ github.sha }}" --format '{{.Size}}')
+          echo "Image size: $((size / 1024 / 1024)) MB" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test the container on sample data
+        run: |
+          docker run -d --name smoke -p 8080:8080 -e ASPNETCORE_ENVIRONMENT=Development "$IMAGE:${{ github.sha }}"
+          for i in $(seq 1 30); do curl -fsS http://localhost:8080/health/ready && break || sleep 1; done
+          curl -fsS http://localhost:8080/api/v1/executive-summary > /dev/null
+          curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
+          docker rm -f smoke
+
+      # Push runs only once the registry is configured: repository variables ACR_NAME, AZURE_CLIENT_ID,
+      # AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID. Deployment to UAT/Production follows, gated by environment approvals.
+      - name: Sign in to Azure
+        if: github.ref == 'refs/heads/main' && vars.ACR_NAME != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Push to Azure Container Registry
+        if: github.ref == 'refs/heads/main' && vars.ACR_NAME != ''
+        run: |
+          az acr login --name "${{ vars.ACR_NAME }}"
+          target="${{ vars.ACR_NAME }}.azurecr.io/$IMAGE:${{ github.sha }}"
+          docker tag "$IMAGE:${{ github.sha }}" "$target"
+          docker push "$target"

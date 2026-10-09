@@ -85,7 +85,7 @@ export default function RevenueBars3D({ bars, currency }) {
   if (!bars.length) return <div className="empty">No data for the selected filters.</div>
   return (
     <>
-      <div className="three" aria-label="3D bar chart of revenue by country">
+      <div className="three" aria-hidden="true">
         <Canvas camera={{ position: [0, 6, 12.5], fov: 38 }} dpr={[1, 2]}>
           <FitCamera />
           <Scene bars={bars} onHover={setHovered} hovered={hovered} />

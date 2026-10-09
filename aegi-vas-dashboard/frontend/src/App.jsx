@@ -19,11 +19,11 @@ export default function App() {
   const [meta, setMeta] = useState(null)
   const optionsQuery = useFilterOptions()
   const options = optionsQuery.data
-  const presets = useMemo(() => periodPresets(options?.maxMonth), [options?.maxMonth])
+  const presets = useMemo(() => periodPresets(options?.minMonth, options?.maxMonth), [options?.minMonth, options?.maxMonth])
   const [filters, setFilters] = useState(null)
 
   useEffect(() => {
-    if (!filters && presets.length) setFilters({ presetId: 'ytd', from: presets[0].from, to: presets[0].to, country: null, centre: null })
+    if (!filters && presets.length) setFilters({ presetId: 'ytd', from: presets[0].from, to: presets[0].to, country: null, centre: null, visaType: null })
   }, [presets, filters])
   useEffect(() => {
     if (window.location.hash.slice(1) !== tab) history.replaceState(null, '', `#${tab}`)
@@ -44,7 +44,7 @@ export default function App() {
         <Tabs active={tab} onChange={setTab} />
       </Header>
       <main className="wrap">
-        <div className="stage">
+        <div className="stage" id="tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
           <AnimatePresence mode="wait">
             <motion.div key={tab} className="view" variants={pageVariants}
               initial={reducedMotion ? false : 'initial'} animate="animate" exit={reducedMotion ? undefined : 'exit'}>

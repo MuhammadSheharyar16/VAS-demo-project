@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { fmtInt, monthLabel } from '../../utils/format'
+import { fmtInt, monthLabel, monthYear } from '../../utils/format'
 import { reducedMotion } from '../../theme/motion'
 
 // Stacked area: digital at the bottom, centre stacked on top. Data comes from /vas/volume.
@@ -17,6 +17,10 @@ export default function AreaChart({ months }) {
   const max = Math.ceil((top * 1.05) / step) * step
   const ticks = Array.from({ length: Math.round(max / step) + 1 }, (_, i) => i * step)
   const n = months.length
+  // A range that crosses a year end shows the year on the first month and on each January, and thins the labels.
+  const multiYear = months[0].month.slice(0, 4) !== months[n - 1].month.slice(0, 4)
+  const every = Math.ceil(n / 12)
+  const tick = (m, i) => (multiYear && (i === 0 || m.month.endsWith('-01')) ? `${monthLabel(m.month)} ${m.month.slice(2, 4)}` : monthLabel(m.month))
   const x = (i) => (n === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (n - 1))
   const y = (v) => T + (1 - v / max) * (H - T - B)
   const line = (vals) => 'M' + vals.map((v, i) => `${x(i)},${y(v)}`).join('L')
@@ -34,7 +38,8 @@ export default function AreaChart({ months }) {
   const hi = hover, bx = hi != null && x(hi) > W - 160 ? x(hi) - 152 : (hi != null ? x(hi) + 10 : 0)
 
   return (
-    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }} role="img" aria-label="Monthly visa volumes">
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }} role="img"
+      aria-label={`Monthly application volumes: ${months.map((m) => `${monthYear(m.month)} ${fmtInt(m.total)}`).join(', ')}`}>
       <defs>
         <linearGradient id="gC" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#d6b25e" stopOpacity=".45" /><stop offset="1" stopColor="#d6b25e" stopOpacity="0" /></linearGradient>
         <linearGradient id="gD" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#6aa8e4" stopOpacity=".45" /><stop offset="1" stopColor="#6aa8e4" stopOpacity="0" /></linearGradient>
@@ -45,7 +50,7 @@ export default function AreaChart({ months }) {
           <text x={L - 8} y={y(v) + 4} textAnchor="end">{v >= 1000 ? `${Math.round(v / 1000)}k` : Math.round(v)}</text>
         </g>
       ))}
-      {months.map((m, i) => <text key={m.month} x={x(i)} y={H - 8} textAnchor="middle">{monthLabel(m.month)}</text>)}
+      {months.map((m, i) => i % every === 0 && <text key={m.month} x={x(i)} y={H - 8} textAnchor="middle">{tick(m, i)}</text>)}
       <motion.path d={centreFill} fill="url(#gC)" {...fade} />
       <motion.path d={digitalFill} fill="url(#gD)" {...fade} />
       <motion.path d={line(totals)} fill="none" stroke="var(--gold)" strokeWidth="2.2" {...draw} />
@@ -55,7 +60,7 @@ export default function AreaChart({ months }) {
         <g pointerEvents="none">
           <line x1={x(hi)} x2={x(hi)} y1={T} y2={H - B} stroke="var(--gold2)" strokeOpacity=".5" />
           <rect x={bx} y={T + 4} width="142" height="54" rx="8" fill="#0b1730" stroke="var(--line)" />
-          <text x={bx + 10} y={T + 22} style={{ fill: 'var(--fg)', fontWeight: 600 }}>{monthLabel(months[hi].month)} · {fmtInt(totals[hi])}</text>
+          <text x={bx + 10} y={T + 22} style={{ fill: 'var(--fg)', fontWeight: 600 }}>{monthYear(months[hi].month)} · {fmtInt(totals[hi])}</text>
           <text x={bx + 10} y={T + 37}>Centre {fmtInt(months[hi].centre)}</text>
           <text x={bx + 10} y={T + 51}>Digital {fmtInt(months[hi].digital)}</text>
         </g>
